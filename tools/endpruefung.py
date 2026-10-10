@@ -32,6 +32,24 @@ TABELLE = re.compile(r"(?:^\|.*\|\s*\n?)+", re.M)
 ok = True
 
 
+def latex_fehler(md: str) -> int:
+    """Fehler in den $$-Formelblöcken: ungerade Anzahl „$$“, unausgeglichene { } in einem Block,
+    \\frac/\\text außerhalb eines Blocks."""
+    fehler, block, im_block = 0, [], False
+    for z in md.splitlines():
+        if z.strip() == "$$":
+            if im_block:
+                ohne_escape = re.sub(r"\\[{}]", "", "\n".join(block))
+                fehler += ohne_escape.count("{") != ohne_escape.count("}")
+                block = []
+            im_block = not im_block
+        elif im_block:
+            block.append(z)
+        else:
+            fehler += len(re.findall(r"\\(?:frac|text)\b", z))
+    return fehler + im_block                    # offener Block am Ende = ungerade Anzahl „$$“
+
+
 def melde(name, wert, gut):
     global ok
     ok &= gut
@@ -65,6 +83,8 @@ for pdf in pdfs:
         summe["tabellen"] += len(TABELLE.findall(text))
         summe["gerettet"] += text.count("![Tabelle Seite")
     summe["formeln"] += md.count("![Formel Seite")
+    summe["latex_bloecke"] += sum(1 for z in md.splitlines() if z == "$$") // 2
+    summe["latex_fehler"] += latex_fehler(md)
     links = re.findall(r"\]\((images/[^)]+)\)", md)
     summe["bildlinks"] += len(links)
     summe["bild_fehlt"] += sum(1 for l in links if not (ziel / l).is_file())
@@ -72,7 +92,9 @@ for pdf in pdfs:
         f = ziel / f"{ziel.name} - {teil}.md"
         if f.is_file():
             summe["teile"] += 1
-            summe["bild_fehlt"] += sum(1 for l in re.findall(r"\]\((images/[^)]+)\)", f.read_text(encoding="utf-8"))
+            teil_md = f.read_text(encoding="utf-8")
+            summe["latex_fehler"] += latex_fehler(teil_md)
+            summe["bild_fehlt"] += sum(1 for l in re.findall(r"\]\((images/[^)]+)\)", teil_md)
                                        if not (ziel / l).is_file())
     v = re.search(r'vollstaendigkeit: "([\d,]+) %"', md)
     summe["vollst_min"] = min(summe["vollst_min"], float(v.group(1).replace(",", ".")) if v else 0.0)
@@ -86,7 +108,8 @@ melde("Silbentrennung in Tabellen („Verkehrs-<br>mittel“)", summe["trennung_
 melde("zerschnittene Wörter in Tabellen", summe["tab_schnitt"], summe["tab_schnitt"] == 0)
 melde("Wortstümpfe in Tabellen", summe["tab_stumpf"], summe["tab_stumpf"] == 0)
 print(f"  ℹ Tabellen: {summe['tabellen']} als Tabelle erhalten, {summe['gerettet']} als Bild + Fließtext übernommen")
-print(f"  ℹ Formeln als Bild + Text: {summe['formeln']}")
+print(f"  ℹ Formeln als Bild + LaTeX: {summe['formeln']} ({summe['latex_bloecke']} $$-Blöcke)")
+melde("LaTeX-Fehler ($$ ungerade, { } offen, \\frac/\\text außerhalb)", summe["latex_fehler"], summe["latex_fehler"] == 0)
 melde("Bildlinks ohne Datei", f"{summe['bild_fehlt']} von {summe['bildlinks']}", summe["bild_fehlt"] == 0)
 print(f"  ℹ Teil-Dateien (Lerntext/Aufgaben/Lösungen): {summe['teile']}")
 melde("niedrigste Vollständigkeit", f"{summe['vollst_min']:.2f} %", summe["vollst_min"] >= 99)

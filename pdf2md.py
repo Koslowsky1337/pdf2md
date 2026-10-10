@@ -384,18 +384,24 @@ def _bruchstriche(page) -> list:
     return striche
 
 
-def _zeilen_text(tokens) -> list[str]:
-    """Tokens (x0, x1, y_mitte, text) zu Zeilen gruppieren; sich berührende Stücke ohne Leerzeichen
-    verbinden (manche PDFs setzen einzelne Buchstaben als eigene Textstücke: „Sta|t|is|t|ik“)."""
+def _zeilen(tokens) -> list[list]:
+    """Tokens (x0, x1, y_mitte, text, …) zu Zeilen gruppieren, jede Zeile von links nach rechts."""
     zeilen = []
     for t in sorted(tokens, key=lambda t: t[2]):
         if zeilen and abs(sum(x[2] for x in zeilen[-1]) / len(zeilen[-1]) - t[2]) < 7:
             zeilen[-1].append(t)
         else:
             zeilen.append([t])
-    ergebnis = []
     for z in zeilen:
         z.sort(key=lambda t: t[0])
+    return zeilen
+
+
+def _zeilen_text(tokens) -> list[str]:
+    """Tokens (x0, x1, y_mitte, text) zu Zeilen gruppieren; sich berührende Stücke ohne Leerzeichen
+    verbinden (manche PDFs setzen einzelne Buchstaben als eigene Textstücke: „Sta|t|is|t|ik“)."""
+    ergebnis = []
+    for z in _zeilen(tokens):
         text = z[0][3]
         for vor, t in zip(z, z[1:]):
             text += ("" if t[0] - vor[1] < 1.0 else " ") + t[3]
@@ -403,36 +409,160 @@ def _zeilen_text(tokens) -> list[str]:
     return ergebnis
 
 
+_LATEX_ZEICHEN = {"⋅": r"\cdot", "·": r"\cdot", "×": r"\cdot", "*": r"\cdot", "−": "-", "–": "-",
+                  "≤": r"\le", "≥": r"\ge", "%": r"\%", "€": r"\text{€}", "{": r"\{", "}": r"\}",
+                  "Δ": r"\Delta", "Σ": r"\Sigma", "∑": r"\sum", "√": r"\surd", "→": r"\rightarrow"}
+# große Klammern der Symbol-Schrift bestehen aus Teilstücken (oben/Mitte/unten, Private-Use-Bereich):
+# das Mittelstück steht auf der Formelzeile und wird zur Klammer, die übrigen Teilstücke entfallen
+_LATEX_ZEICHEN.update({chr(c): "" for c in range(0xF0E6, 0xF0FF)})
+_LATEX_ZEICHEN.update({"": "(", "": ")", "": "[", "": "]", "": r"\{", "": r"\}"})
+_TEXT_ESCAPE = {"#": r"\#", "$": r"\$", "%": r"\%", "&": r"\&", "_": r"\_", "{": r"\{", "}": r"\}",
+                "~": r"\textasciitilde{}", "^": r"\textasciicircum{}", "\\": r"\textbackslash{}"}
+_LATEX_TEIL = re.compile(r"(?P<zahl>\d{1,3}(?: \d{3})+(?:,\d+)?|\d+(?:,\d+)?)"
+                         r"|(?P<wort>[A-Za-zÄÖÜäöüß][\wÄÖÜäöüß.'\-]*)|(?P<leer>\s+)|(?P<zeichen>.)")
+
+
+def _latex_text(t: str) -> str:
+    return r"\text{" + "".join(_TEXT_ESCAPE.get(c, c) for c in t) + "}"
+
+
+def latex(text: str) -> str:
+    """Formelzeile als LaTeX: Wortfolgen -> \\text{…}, einzelne Buchstaben, Zahlen und Operatoren als Mathe."""
+    teile, woerter = [], []
+
+    def woerter_abschliessen():
+        if woerter:
+            teile.append(_latex_text(" ".join(woerter)))
+            woerter.clear()
+
+    for m in _LATEX_TEIL.finditer(text):
+        art, t = m.lastgroup, m.group()
+        if art == "leer":
+            continue
+        if art == "wort" and (len(t) > 1 or not t.isascii()):
+            woerter.append(t)
+            continue
+        woerter_abschliessen()
+        if art == "zahl":
+            teile.append(t.replace(",", "{,}").replace(" ", r"\,"))    # Dezimalkomma, Tausendertrenner
+        elif art == "wort" or t in "=+-/()[]<>,;:.!|'" or (t.isascii() and t not in _TEXT_ESCAPE):
+            teile.append(t)
+        elif t in _LATEX_ZEICHEN:
+            if _LATEX_ZEICHEN[t]:
+                teile.append(_LATEX_ZEICHEN[t])
+        else:
+            teile.append(_latex_text(t))
+    woerter_abschliessen()
+    return " ".join(teile)
+
+
+def _zeile_latex(zeile) -> str:
+    """Eine Zeile aus Wörtern (latex=None) und fertigen Brüchen (latex gesetzt) als LaTeX."""
+    teile, roh, vor = [], "", None
+    for t in zeile:
+        if t[4] is None:
+            roh += ("" if not roh or t[0] - vor[1] < 1.0 else " ") + t[3]
+        else:
+            if roh:
+                teile.append(latex(roh))
+                roh = ""
+            teile.append(t[4])
+        vor = t
+    if roh:
+        teile.append(latex(roh))
+    return " ".join(teile)
+
+
 def formel_text(page, clip, striche) -> tuple[str, int]:
-    """Formel als Text mit echten Brüchen: „(Zähler) / (Nenner)“. Rückgabe: (Text, Anzahl Brüche)."""
-    woerter = page.get_text("words", clip=clip)
-    benutzt, tokens, brueche = set(), [], 0
-    for s in sorted((s for s in striche if clip.contains(pymupdf.Point(s.x0 + 1, s.y0))
-                     and clip.contains(pymupdf.Point(s.x1 - 1, s.y0))), key=lambda s: s.width):
-        drin = lambda w: w[0] >= s.x0 - 3 and w[2] <= s.x1 + 3
-        zaehler = [i for i, w in enumerate(woerter) if i not in benutzt and drin(w) and s.y0 - 14 <= w[3] <= s.y0 + 2]
-        nenner = [i for i, w in enumerate(woerter) if i not in benutzt and drin(w) and s.y0 - 2 <= w[1] <= s.y0 + 14]
+    """Formel als LaTeX, eine Zeile pro Formelzeile, Brüche als \\frac{Zähler}{Nenner}.
+    Rückgabe: (LaTeX-Zeilen, Anzahl Striche mit Text darüber und darunter – Brüche oder Summenstriche;
+    > 0 heißt: Textbox ist eine Formel bzw. Rechnung)."""
+    # Stücke: [x0, oben, x1, unten, text, latex] – Wörter (latex None) und fertige Brüche
+    stuecke = [[w[0], w[1], w[2], w[3], w[4], None] for w in page.get_text("words", clip=clip)]
+    im_clip = sorted((s for s in striche if clip.contains(pymupdf.Point(s.x0 + 1, s.y0))
+                      and clip.contains(pymupdf.Point(s.x1 - 1, s.y0))), key=lambda s: s.width)
+    benutzt, treffer = set(), 0
+    for s in im_clip:
+        # schmale Striche zuerst: ein innerer Bruch ist dann schon fertig und landet
+        # als Ganzes im Zähler/Nenner des äußeren Bruchs (verschachtelte Brüche)
+        frei = [i for i in range(len(stuecke)) if i not in benutzt
+                and stuecke[i][0] >= s.x0 - 3 and stuecke[i][2] <= s.x1 + 3]
+        zaehler = [i for i in frei if s.y0 - 14 <= stuecke[i][3] <= s.y0 + 2]
+        nenner = [i for i in frei if s.y0 - 2 <= stuecke[i][1] <= s.y0 + 14]
         if not zaehler or not nenner:
             continue                                    # Unterstreichung o. Ä., kein Bruch
-        teil = lambda ids: " ".join(_zeilen_text([(woerter[i][0], woerter[i][2], (woerter[i][1] + woerter[i][3]) / 2,
-                                                   woerter[i][4]) for i in ids]))
-        klammer = lambda t: f"({t})" if re.search(r"[\s+\-–·⋅*]", t) and not re.fullmatch(r"\(.*\)", t) else t
-        tokens.append((s.x0, s.x1, s.y0, f"{klammer(teil(zaehler))} / {klammer(teil(nenner))}"))
-        benutzt.update(zaehler + nenner)
-        brueche += 1
-    tokens += [(w[0], w[2], (w[1] + w[3]) / 2, w[4]) for i, w in enumerate(woerter) if i not in benutzt]
-    return "\n".join(_zeilen_text(tokens)) if tokens else "", brueche
+        treffer += 1
+        nenner = [i for i in nenner if i not in zaehler]
+        if not nenner:
+            continue
+        breite = lambda ids: max(stuecke[i][2] for i in ids) - min(stuecke[i][0] for i in ids)
+        if max(breite(zaehler), breite(nenner)) < 0.6 * s.width:
+            continue                                    # viel breiter als Zähler/Nenner: Rahmen- oder Tabellenlinie
+        mitte = lambda ids: (max(stuecke[i][2] for i in ids) + min(stuecke[i][0] for i in ids)) / 2
+        if any(abs(mitte(ids) - (s.x0 + s.x1) / 2) > 0.25 * s.width for ids in (zaehler, nenner)):
+            continue                                    # nicht mittig: Summenstrich eines Rechenschemas
+        # mehrzeilige Zähler/Nenner: direkt anschließende Zeilen innerhalb der Strichbreite gehören dazu,
+        # aber nie über einen anderen Bruchstrich hinweg (sonst zerfallen verschachtelte Brüche)
+        for ids, nach_oben in ((zaehler, True), (nenner, False)):
+            while True:
+                rand = min(stuecke[i][1] for i in ids) if nach_oben else max(stuecke[i][3] for i in ids)
+                dazu = []
+                for i in frei:
+                    if i in zaehler or i in nenner:
+                        continue
+                    oben, unten = (stuecke[i][3], rand) if nach_oben else (rand, stuecke[i][1])
+                    if 0 <= unten - oben <= 6 and not any(
+                            t is not s and oben - 1 <= t.y0 <= unten + 1
+                            and t.x0 < stuecke[i][2] and t.x1 > stuecke[i][0] for t in im_clip):
+                        dazu.append(i)
+                if not dazu:
+                    break
+                ids += dazu
+        if " ".join(stuecke[i][4] for i in sorted(nenner, key=lambda i: (stuecke[i][1], stuecke[i][0]))).startswith("="):
+            continue                                    # „– Kosten / = Ergebnis“: Summenstrich eines Rechenschemas
+
+        def teil(ids):
+            tokens = [(stuecke[i][0], stuecke[i][2], (stuecke[i][1] + stuecke[i][3]) / 2,
+                       stuecke[i][4], stuecke[i][5]) for i in ids]
+            zeilen = _zeilen(tokens)
+            return " ".join(_zeilen_text(tokens)), " ".join(_zeile_latex(z) for z in zeilen)
+
+        (zt, zl), (nt, nl) = teil(zaehler), teil(nenner)
+        ids = zaehler + nenner
+        stuecke.append([s.x0, min(stuecke[i][1] for i in ids), s.x1, max(stuecke[i][3] for i in ids),
+                        f"({zt}) / ({nt})", rf"\frac{{{zl}}}{{{nl}}}"])
+        benutzt.update(ids)
+    rest = [st for i, st in enumerate(stuecke) if i not in benutzt]
+    tokens = []
+    for st in rest:
+        y = (st[1] + st[3]) / 2
+        if st[5] is not None:       # Bruch in die Textzeile setzen, die auf seiner Höhe links/rechts daneben steht
+            daneben = [(w[1] + w[3]) / 2 for w in rest if w[5] is None and st[1] <= (w[1] + w[3]) / 2 <= st[3]
+                       and (w[2] <= st[0] + 1 or w[0] >= st[2] - 1)]
+            y = min(daneben, key=lambda d: abs(d - y), default=y)
+        tokens.append((st[0], st[2], y, st[4], st[5]))
+    return "\n".join(_zeile_latex(z) for z in _zeilen(tokens)), treffer
 
 
 def formel_md(page, rect, bilder, striche) -> str:
-    """Formel als Bild (sieht aus wie im Heft) + Textfassung mit Brüchen (für Suche und Claude)."""
+    """Formel als Bild (sieht aus wie im Heft) + LaTeX-Fassung (VS-Code-Vorschau, Suche, Claude)."""
     clip = (rect + (-2, -2, 2, 2)) & page.rect
     link = bilder.speichern(page, clip, minimum=6)
     text, _ = formel_text(page, clip, striche)
     teile = [f"![Formel Seite {page.number + 1}]({link})"] if link else []
-    if text:
-        teile.append("\n".join(f"> {z}" for z in text.splitlines()))
+    teile += [f"$$\n{z}\n$$" for z in text.splitlines() if z.strip()]
     return "\n\n".join(teile) + "\n\n" if teile else ""
+
+
+def dollar_escapen(md: str) -> str:
+    """Ein einzelnes „$“ würde die Vorschau als Mathe deuten – außerhalb der $$-Formelblöcke escapen."""
+    zeilen, im_block = md.split("\n"), False
+    for i, z in enumerate(zeilen):
+        if z == "$$":
+            im_block = not im_block
+        elif not im_block:
+            zeilen[i] = re.sub(r"(?<!\\)\$", r"\\$", z)
+    return "\n".join(zeilen)
 
 
 def vektor_cluster(page):
@@ -537,7 +667,7 @@ def seite_aufbauen(page, chunk, bilder: BildSpeicher, hinweise: list) -> str:
         pos = next((k for k, t in enumerate(teile) if len(t) == 3 and t[2].y0 >= c.y0), len(teile))
         teile.insert(pos, ("grafik", md))
 
-    return "".join(t[1] for t in teile)
+    return dollar_escapen("".join(t[1] for t in teile))
 
 
 # ---------------------------------------------------------------- Qualitätsprüfung
