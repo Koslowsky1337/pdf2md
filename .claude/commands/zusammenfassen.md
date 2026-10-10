@@ -22,7 +22,8 @@ Erzeuge für Hefte unter `output/` je eine Zusammenfassung aus dem bereinigten L
 
 - Starte pro Heft einen Subagent vom Typ `general-purpose`, **höchstens 3 gleichzeitig**.
 - Gib ihm den absoluten Pfad des Lerntexts, den Zielpfad `<X> - Zusammenfassung.md` im selben Ordner, das heutige Datum und die **REGELN unten vollständig und wörtlich** mit.
-- Der Subagent schreibt die Datei selbst. Er meldet die letzte `<!-- Seite N -->` des Lerntexts zurück.
+- Der Subagent schreibt die Datei selbst. Er meldet die letzte `<!-- Seite N -->` des Lerntexts zurück und „unzuverlässige Formeln: S. …“ oder „unzuverlässige Formeln: keine“.
+- Sammle diese Formel-Meldungen aller Hefte für die Abschlussliste.
 
 ## 3. Prüfen
 
@@ -32,7 +33,8 @@ Erzeuge für Hefte unter `output/` je eine Zusammenfassung aus dem bereinigten L
 ## 4. Abschluss
 
 - Für jeden betroffenen Ordner `output/<Ordner>/`: Lies in `output/<Ordner>/_index.md` die Zeile ``Quelle: `…` `` und führe `python pdf2md.py --nogui --index "<Quelle>"` aus. Damit verlinkt der Index die neuen Zusammenfassungen.
-- Gib am Ende eine Tabelle aus: `Heft | Status | Länge in % | Prüfung` (Status: erstellt / korrigiert / übersprungen / Fehler).
+- Gib am Ende eine Tabelle aus: `Heft | Status | Länge in % | Zahlen ✔/✘ | Fettbegriff-Warnungen | unplausible Seiten in %` (Status: erstellt / korrigiert / übersprungen / Fehler; Werte aus der Kopfzeile des Prüfskripts).
+- Danach eine eigene Liste „Unzuverlässige Formeln“: Heft + Seiten, aus den Meldungen der Subagents.
 
 ## 5. Grenzen
 
@@ -43,10 +45,11 @@ Erzeuge für Hefte unter `output/` je eine Zusammenfassung aus dem bereinigten L
 ## REGELN für den Subagent
 
 1. **Komplett lesen:** Lies den Lerntext vollständig, in Abschnitten (z. B. je 400 Zeilen), bis zur letzten Zeile. Nenne zur Kontrolle die letzte `<!-- Seite N -->`.
-2. **Nur der Lerntext zählt:** Kein Fremdwissen, keine eigenen Beispiele. Zahlen, Formeln und Definitionen exakt übernehmen. Keine Aufgaben, keine Übungen, keine Lösungen, keine Literatur oder Quellen. Sprache Deutsch.
-3. **Seitenangaben:** Hinter jede Aussage gehört `(S. N)`. N ist die nächstgelegene **vorausgehende** `<!-- Seite N -->` im Lerntext. Nur Seitenzahlen verwenden, die als `<!-- Seite N -->` im Lerntext stehen.
-4. **Umfang:** etwa 10–15 % der Zeichenzahl des Lerntexts, Stil Lernzettel (knappe Stichpunkte, keine Fließtext-Absätze).
-5. **Format** (leere Unterabschnitte weglassen, keine weiteren Überschriften außer den hier genannten):
+2. **Nur der Lerntext zählt:** Kein Fremdwissen, keine eigenen Beispiele. Definitionen exakt übernehmen. Zahlen nur übernehmen, wenn sie genau so im Lerntext stehen (nichts ausrechnen, runden oder umformulieren). Keine Aufgaben, keine Übungen, keine Lösungen, keine Literatur oder Quellen. Sprache Deutsch.
+3. **Seitenangaben:** Hinter jede Aussage gehört `(S. N)`. Fasst eine Aussage mehrere Stellen zusammen, auch `(S. N, S. M)`. Jede Seite muss die sein, auf der dieser Inhalt im Lerntext steht, also die nächstgelegene **vorausgehende** `<!-- Seite N -->` vor der jeweiligen Stelle. Nur Seitenzahlen verwenden, die als `<!-- Seite N -->` im Lerntext stehen.
+4. **Formeln:** Die Textfassung (die „> “-Zeilen unter einem Formelbild) nur übernehmen, wenn sie lesbar und mathematisch plausibel ist, dann exakt. Andernfalls das zugehörige Formelbild aus dem Lerntext verlinken, mit genau dem Pfad aus dem Lerntext, z. B. `![Formel S. N](images/<datei>.png) (Textfassung im Heft unzuverlässig) (S. N)`. Melde am Ende „unzuverlässige Formeln: S. …“ oder „unzuverlässige Formeln: keine“.
+5. **Umfang:** etwa 10–15 % der Zeichenzahl des Lerntexts, Stil Lernzettel (knappe Stichpunkte, keine Fließtext-Absätze).
+6. **Format** (leere Unterabschnitte weglassen, keine weiteren Überschriften außer den hier genannten):
 
    ```
    ---
@@ -68,6 +71,7 @@ Erzeuge für Hefte unter `output/` je eine Zusammenfassung aus dem bereinigten L
    - **Definition N – Begriff:** vollständiger Inhalt der Definition (S. N)
    ### Formeln
    > Textfassung exakt wie in den „> “-Zeilen des Lerntexts (S. N)
+   ![Formel S. N](images/<datei>.png) (Textfassung im Heft unzuverlässig) (S. N)
    ### Merke
    - Merksatz oder Hinweis (S. N)
 
@@ -80,4 +84,4 @@ Erzeuge für Hefte unter `output/` je eine Zusammenfassung aus dem bereinigten L
    - **Definitionen:** Jede nummerierte Definition („Definition 1.2“) des Lerntexts erscheint vollständig, im Format `**Definition N – Begriff:**`.
    - **Wichtige Begriffe:** Glossar-Einträge und fett gedruckte Fachbegriffe, alphabetisch sortiert, je eine kurze Erklärung aus dem Lerntext.
    - Überschriften dürfen die Wörter Übung, Aufgabe, Lösung, Literatur oder Quellen nicht enthalten.
-6. **Ausgabe:** `<X> - Zusammenfassung.md` im Ordner des Lerntexts, UTF-8. Keine anderen Dateien anlegen oder ändern.
+7. **Ausgabe:** `<X> - Zusammenfassung.md` im Ordner des Lerntexts, UTF-8. Keine anderen Dateien anlegen oder ändern.

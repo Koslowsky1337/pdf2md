@@ -8,7 +8,9 @@ Aufruf:
 
 Geprüft wird jede „<X> - Zusammenfassung.md“, die neben einer „<X> - Lerntext.md“ liegt:
 YAML-Kopf, alle Hauptkapitel, alle nummerierten Definitionen, Seitenangaben „(S. N)“,
-keine Übungen/Aufgaben/Lösungen/Literatur/Quellen, Länge 5–25 % des Lerntexts (sonst nur Warnung).
+keine Übungen/Aufgaben/Lösungen/Literatur/Quellen, jede Zahl (ab 2 Ziffern) steht im Lerntext.
+Nur Warnungen: Länge außerhalb 5–25 %, Fettbegriffe, die im Lerntext fehlen, und Seitenangaben,
+bei denen weniger als 30 % der Inhaltswörter (ab 6 Buchstaben) auf der Seite oder einer Nachbarseite stehen.
 Danach folgt die Liste der Hefte, die noch keine Zusammenfassung haben. Exit-Code 1 bei Fehlern.
 """
 import pathlib
@@ -26,10 +28,14 @@ sys.path.insert(0, str(PROJEKT))
 import aufteilen                             # noqa: E402
 
 VERBOTEN = re.compile(r"übung|aufgabe|lösung|literatur|quellen", re.I)
+BILD = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+SEITENMARKE = re.compile(r"<!-- Seite \d+ -->")
+SEITENANGABE = re.compile(r"\(S\.[^)]*\)")
+ZAHL = re.compile(r"\b\d{1,3}(?:[ .  ]\d{3})+\b|\d+")      # mit Tausendertrennern oder ohne
 
 
 def pruefen(lerntext: pathlib.Path, zusammenfassung: pathlib.Path):
-    """Rückgabe: (Fehlerliste, Warnungsliste, Länge in %)."""
+    """Rückgabe: (Fehlerliste, Warnungsliste, Länge in %, Kennzahlen zu g/h/i)."""
     lt = lerntext.read_text(encoding="utf-8")
     zf = zusammenfassung.read_text(encoding="utf-8")
     zf_zeilen = zf.splitlines()
@@ -78,7 +84,71 @@ def pruefen(lerntext: pathlib.Path, zusammenfassung: pathlib.Path):
     prozent = len(zf) * 100 / max(len(lt), 1)
     if not 5 <= prozent <= 25:
         warnungen.append(f"Länge {prozent:.1f} % (erwartet 5–25 %)")
-    return fehler, warnungen, prozent
+
+    _, start = aufteilen.front_matter(zf_zeilen)
+    inhalt = [(nr, z) for nr, z in enumerate(zf_zeilen, 1) if nr > start]   # ohne YAML-Kopf
+    lt_text = BILD.sub(" ", SEITENMARKE.sub(" ", lt))
+
+    # g) Zahlen: jede Ziffernfolge ab 2 Ziffern muss im Lerntext stehen
+    lt_zahlen, lt_teile = zahlen(lt_text)
+    zahl_fehler = []
+    for nr, z in inhalt:
+        z = re.sub(r"Definition\s+\d+(?:\.\d+)*", " ", SEITENANGABE.sub(" ", BILD.sub(" ", z)))
+        z = re.sub(r"^##\s+\d+", " ", z)
+        ganz, _ = zahlen(z)
+        for zahl, roh in ganz.items():
+            # „3 100“ kann auch „3“ und „100“ sein – dann genügen die einzelnen Ziffernfolgen
+            teile = [t for t in re.findall(r"\d+", roh) if len(t) >= 2]
+            if zahl not in lt_zahlen and not all(t in lt_teile for t in teile):
+                zahl_fehler.append(f"{roh} (Zeile {nr})")
+    if zahl_fehler:
+        fehler.append(f"Zahlen nicht im Lerntext: {', '.join(zahl_fehler)}")
+
+    # h) Fettbegriffe (nur Warnung)
+    lt_flach = re.sub(r"\s+", " ", re.sub(r"\*\*|(?<!\w)_|_(?!\w)", "", lt)).lower()
+    fett_fehlt = []
+    for nr, z in inhalt:
+        for begriff in re.findall(r"\*\*(.+?)\*\*", z):
+            begriff = re.sub(r"^Definition\s+\d+(?:\.\d+)*\s*[–-]\s*", "", begriff).strip().rstrip(":").strip()
+            if begriff and re.sub(r"\s+", " ", begriff).lower() not in lt_flach:
+                fett_fehlt.append(f"{begriff} (Zeile {nr})")
+    if fett_fehlt:
+        warnungen.append(f"Fettbegriffe nicht im Lerntext ({len(fett_fehlt)}): {'; '.join(fett_fehlt[:10])}"
+                         + (" …" if len(fett_fehlt) > 10 else ""))
+
+    # i) Seiten plausibel (nur Warnung): ≥ 30 % der Inhaltswörter stehen auf Seite N oder einer Nachbarseite
+    seitentext = {int(n): t.lower() for n, t in
+                  re.findall(r"<!-- Seite (\d+) -->\n(.*?)(?=<!-- Seite \d+ -->|\Z)", lt, re.S)}
+    mit_seite, unplausibel = 0, []
+    for nr, z in inhalt:
+        angaben = [int(n) for a in re.findall(r"\(S\.\s*([^)]*)\)", z) for n in re.findall(r"\d+", a)]
+        if not angaben:
+            continue
+        mit_seite += 1
+        woerter = set(re.findall(r"[a-zäöüß]{6,}", SEITENANGABE.sub(" ", BILD.sub(" ", z)).lower()))
+        if len(woerter) < 3:
+            continue
+        umfeld = " ".join(seitentext.get(s + d, "") for s in angaben for d in (-1, 0, 1))
+        if sum(w in umfeld for w in woerter) < 0.3 * len(woerter):
+            unplausibel.append(nr)
+    unplausibel_prozent = len(unplausibel) * 100 / max(mit_seite, 1)
+    if unplausibel:
+        warnungen.append(f"Seiten unplausibel: {len(unplausibel)} / {mit_seite} Zeilen mit Seitenangabe "
+                         f"({unplausibel_prozent:.1f} %), z. B. Zeilen {', '.join(map(str, unplausibel[:5]))}")
+
+    werte = {"zahlen": len(zahl_fehler), "fett": len(fett_fehlt),
+             "unplausibel": len(unplausibel), "mit_seite": mit_seite, "unplausibel_prozent": unplausibel_prozent}
+    return fehler, warnungen, prozent, werte
+
+
+def zahlen(text: str):
+    """Zahlen ab 2 Ziffern, Tausendertrenner vereinheitlicht („1 890“ = „1.890“ = „1890“).
+    Rückgabe: ({vereinheitlicht: wie geschrieben}, alle einzelnen Ziffernfolgen ab 2 Ziffern)."""
+    ganz = {}
+    for roh in ZAHL.findall(text):
+        if len(zahl := re.sub(r"\D", "", roh)) >= 2:
+            ganz.setdefault(zahl, roh)
+    return ganz, {t for t in re.findall(r"\d+", text) if len(t) >= 2}
 
 
 def main():
@@ -94,9 +164,11 @@ def main():
         if not zf.is_file():
             offen.append(heft)
             continue
-        fehler, warnungen, prozent = pruefen(lt, zf)
+        fehler, warnungen, prozent, w = pruefen(lt, zf)
         ok &= not fehler
-        print(f"{'✔' if not fehler else '✘'} {heft}: Länge {prozent:.1f} %")
+        print(f"{'✔' if not fehler else '✘'} {heft}: Länge {prozent:.1f} % · Zahlen {'✔' if not w['zahlen'] else '✘'}"
+              f" · Fettbegriff-Warnungen {w['fett']} · Seiten unplausibel {w['unplausibel']} / {w['mit_seite']}"
+              f" ({w['unplausibel_prozent']:.1f} %)")
         for f in fehler:
             print(f"    ✘ {f}")
         for w in warnungen:
