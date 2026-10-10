@@ -14,10 +14,11 @@ python -m pip install -r requirements.txt
 |---|---|
 | `start.bat` doppelklicken | Frage: einzelne PDF(s) **oder** ganzen Ordner wählen |
 | PDF(s) oder Ordner auf `start.bat` ziehen | direkt konvertieren |
-| `python pdf2md.py "D:\Skripte"` | Ordner per Konsole |
+| `python pdf2md.py "<PDF-Ordner>"` | Ordner per Konsole |
 | `--overwrite` | alles neu erzeugen |
 | `--nogui` | keine Dialoge |
 | `-j 4` | höchstens 4 PDFs gleichzeitig (Standard: automatisch) |
+| `python pdf2md.py --index "<PDF-Ordner>"` | nur `_index.md` neu schreiben, ohne Umwandlung |
 
 ## Wo landet was?
 
@@ -29,9 +30,9 @@ output\<PDF-Name>\images\seite002_bild01.png
 
 **Ordner** (Unterordner werden gespiegelt):
 ```
-output\Skripte\_index.md                          ← Inhaltsverzeichnis aller Hefte
-output\Skripte\01 Grundlagen\Heft 1\Heft 1.md
-output\Skripte\01 Grundlagen\Heft 1\images\...
+output\<Name des PDF-Ordners>\_index.md          ← Inhaltsverzeichnis aller Hefte
+output\<Name des PDF-Ordners>\01 Grundlagen\Heft 1\Heft 1.md
+output\<Name des PDF-Ordners>\01 Grundlagen\Heft 1\images\...
 ```
 
 ## Aufteilung pro Heft
@@ -44,7 +45,7 @@ Nach jeder Umwandlung entstehen neben `<Heft>.md` (Volltext) automatisch:
 | `<Heft> - Aufgaben.md` | Übungen im Text, Aufgaben zur Selbstüberprüfung, Übungsfälle, Einsendeaufgabe |
 | `<Heft> - Lösungen.md` | Lösungs- und Bearbeitungshinweise aus dem Anhang |
 
-Verworfen werden Titelseiten sowie Inhalts-, Literatur-, Abbildungs-, Tabellen-, Abkürzungs- und Sachwortverzeichnis. Reine Aufgaben- und Lösungshefte (Titel „Aufgabenheft“/„Lösungsheft“) landen komplett in Aufgaben bzw. Lösungen. In Aufgaben und Lösungen stehen Kapitelüberschriften und `<!-- Seite N -->` zur Orientierung. `_index.md` verlinkt pro Heft alle Teile.
+Verworfen werden Titelseiten sowie Inhalts-, Literatur-, Abbildungs-, Tabellen-, Abkürzungs- und Sachwortverzeichnis. Reine Aufgaben- und Lösungshefte (Titel „Aufgabenheft“/„Lösungsheft“) landen komplett in Aufgaben bzw. Lösungen. **Gesetzestexte** (viele Zeilen beginnen mit „§ 12“) bleiben unverändert: Für sie gibt es nur den Volltext. In Aufgaben und Lösungen stehen Kapitelüberschriften und `<!-- Seite N -->` zur Orientierung. `_index.md` verlinkt pro Heft alle Teile.
 
 Ohne Neu-Umwandlung erneut aufteilen (z. B. nachdem die Regeln angepasst wurden):
 ```bash
@@ -54,7 +55,24 @@ Die Regeln stehen oben in `aufteilen.py` und sind auf typische deutschsprachige 
 
 Gesamtprüfung aller Ergebnisse gegen die Original-PDFs (z. B. nach Änderungen am Code):
 ```bash
-python tools\endpruefung.py
+python tools\endpruefung.py "<PDF-Ordner>"
+```
+
+## Zusammenfassung pro Heft
+
+Die Zusammenfassung erzeugt Claude Code aus dem Lerntext, über das eigene Claude-Abo (kein API-Key):
+
+```
+/zusammenfassen              alle Hefte unter output, vorhandene werden übersprungen
+/zusammenfassen ABC01        nur dieses Heft
+/zusammenfassen alle --neu   alle neu erzeugen
+```
+
+Ergebnis ist `<Heft> - Zusammenfassung.md` neben dem Lerntext: ein Lernzettel pro Hauptkapitel mit Kernaussagen, allen nummerierten Definitionen, Formeln, Merksätzen und einer Begriffsliste. Hinter jeder Aussage steht die Seite, z. B. „Angebot steigt mit dem Preis (S. 12)“. Aufgaben, Lösungen und Literatur gehören nicht hinein. Der Befehl steht in `.claude/commands/zusammenfassen.md`.
+
+Jede Zusammenfassung wird automatisch geprüft (alle Kapitel und Definitionen vorhanden, Seitenangaben gültig, keine Aufgaben/Lösungen, Länge 5–25 % des Lerntexts). Die Prüfung lässt sich auch einzeln starten und listet am Ende die Hefte ohne Zusammenfassung:
+```bash
+python tools\zusammenfassung_pruefen.py
 ```
 
 ## Verhalten

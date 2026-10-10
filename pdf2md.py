@@ -4,10 +4,11 @@ pdf2md – wandelt eine PDF in eine Markdown-Datei (+ Bilder) um.
 Aufruf:
     python pdf2md.py                 -> Dateiauswahl-Dialog (mehrere PDFs möglich)
     python pdf2md.py a.pdf b.pdf     -> direkt konvertieren (auch per Drag & Drop auf start.bat)
-    python pdf2md.py "D:\Skripte"    -> ganzen Ordner inkl. Unterordner konvertieren
+    python pdf2md.py "<PDF-Ordner>"  -> ganzen Ordner inkl. Unterordner konvertieren
     python pdf2md.py --overwrite x.pdf  -> vorhandene Ausgabe ohne Rückfrage überschreiben
     python pdf2md.py --nogui x.pdf      -> ohne Dialoge (nur Konsole)
-    python pdf2md.py -j 4 "D:\Skripte"  -> höchstens 4 PDFs gleichzeitig (Standard: automatisch)
+    python pdf2md.py -j 4 "<PDF-Ordner>"  -> höchstens 4 PDFs gleichzeitig (Standard: automatisch)
+    python pdf2md.py --index "<PDF-Ordner>"  -> nur _index.md neu schreiben (ohne Umwandlung)
 
 Ergebnis:  <Script-Ordner>/output/<PDF-Name>/<PDF-Name>.md  +  images/
 Ordner:    <Script-Ordner>/output/<Ordner>/<Unterordner…>/<PDF-Name>/…  +  _index.md
@@ -866,12 +867,25 @@ def main():
         except Exception:
             pass
     parser = argparse.ArgumentParser(description="PDF -> Markdown")
-    parser.add_argument("pdfs", nargs="*", help="PDF-Datei(en); ohne Angabe öffnet sich ein Dialog")
+    parser.add_argument("pdfs", nargs="*", help="PDF-Datei(en) oder \"<PDF-Ordner>\"; ohne Angabe öffnet sich ein Dialog")
     parser.add_argument("--overwrite", action="store_true", help="vorhandene Ausgabe überschreiben")
     parser.add_argument("--nogui", action="store_true", help="keine Dialoge, nur Konsole")
     parser.add_argument("-j", "--prozesse", type=int, default=MAX_PROZESSE,
                         help="gleichzeitig verarbeitete PDFs (0 = automatisch)")
+    parser.add_argument("--index", action="store_true", help="nur _index.md von \"<PDF-Ordner>\" neu schreiben")
     args = parser.parse_args()
+
+    if args.index:
+        if not args.pdfs:
+            parser.error('--index braucht den Quellordner, z. B.: python pdf2md.py --index "<PDF-Ordner>"')
+        for p in map(Path, args.pdfs):
+            basis = OUTPUT_ROOT / sicherer_name(p.resolve().name or "Laufwerk")
+            if not basis.is_dir():
+                print(f"Kein Ausgabeordner „{basis}“ – „{p}“ wurde noch nicht umgewandelt.")
+                continue
+            index_schreiben(basis, p, [])
+            print(f"Index neu geschrieben: {basis / '_index.md'}")
+        return
 
     tk = root = None
     try:

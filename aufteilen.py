@@ -3,8 +3,8 @@ aufteilen – teilt eine von pdf2md erzeugte Heft-.md in Aufgaben, Lösungen und
 
 Aufruf:
     python aufteilen.py                      -> alle Hefte im output-Ordner
-    python aufteilen.py "output\Skripte"     -> nur dieser Ordner (rekursiv)
-    python aufteilen.py pfad\Skript01.md     -> nur dieses Heft
+    python aufteilen.py "output\<Name des PDF-Ordners>"  -> nur dieser Ordner (rekursiv)
+    python aufteilen.py pfad\<Heft>.md     -> nur dieses Heft
 
 Ergebnis (neben der Volltext-.md, die unverändert bleibt):
     <Heft> - Aufgaben.md   Übungen im Text, Aufgaben zur Selbstüberprüfung, Übungsfälle, Einsendeaufgabe
@@ -12,6 +12,7 @@ Ergebnis (neben der Volltext-.md, die unverändert bleibt):
     <Heft> - Lerntext.md   Kapiteltext inkl. Beispiele, Definitionen, Kapitel-Zusammenfassungen, Glossar
 Verworfen werden Vorspann (Titelseiten), Inhalts-, Literatur-, Abbildungs-, Tabellen-, Abkürzungs-
 und Sachwortverzeichnis. Jede Zeile des Volltexts landet in genau einer Kategorie.
+Gesetzestexte (viele Zeilen beginnen mit „§ 12“) bleiben unverändert: Für sie gibt es nur den Volltext.
 """
 
 import re
@@ -32,6 +33,7 @@ ANHANG = re.compile(r"(?:^|\s)([A-H])\.\s+([A-ZÄÖÜ].*)$")
 FETT_START = re.compile(r"^\*\*[A-ZÄÖÜ]")
 INLINE_AUFGABE = re.compile(r"^(übung\s*\d|aufgaben?\s*(\d|:))", re.I)
 BLOCK_ENDE = re.compile(r"^(beispiel|hinweis|definition|merke|übung|aufgabe)", re.I)
+PARAGRAF = re.compile(r"^(#{1,6}\s*)?(\*\*)?§\s*\d")
 
 
 def klartext(zeile: str) -> str:
@@ -67,6 +69,14 @@ def gehoert_zur_uebung(zeile: str, block: dict) -> bool:
             and (vorher.startswith("|") or "___" in vorher or block["liste"])):
         return True                                          # Arbeitsauftrag nach Tabelle/Liste („Ermitteln Sie …“)
     return zeile.endswith("?") and len(zeile) < 160          # kurze Nachfrage
+
+
+def ist_gesetzestext(zeilen) -> bool:
+    """Gesetzestext = mindestens 100 und mindestens 10 % der Inhaltszeilen beginnen mit „§ N“
+    (gemessen: Gesetze 17–25 %, Lehrhefte höchstens 3 %)."""
+    inhalt = [z for z in zeilen if z.strip() and not z.startswith("<!--")]
+    paragrafen = sum(1 for z in inhalt if PARAGRAF.match(z))
+    return paragrafen >= 100 and paragrafen >= 0.1 * len(inhalt)
 
 
 def anhang_kategorie(titel: str) -> str:
@@ -198,8 +208,12 @@ def klassifizieren(zeilen, start):
 def aufteilen(md: Path) -> dict:
     """Teilt eine Volltext-.md auf. Rückgabe: Anzahl Inhaltszeilen je Kategorie."""
     zeilen = md.read_text(encoding="utf-8").splitlines()
-    kopf, start = front_matter(zeilen)
     heft = md.stem
+    if ist_gesetzestext(zeilen):
+        for name in TEILE.values():
+            md.with_name(f"{heft} - {name}.md").unlink(missing_ok=True)   # Reste aus früheren Läufen
+        return {"gesetzestext": 1}
+    kopf, start = front_matter(zeilen)
     titel = kopf.get("titel") or heft
 
     ausgaben = {k: [] for k in TEILE}
@@ -243,6 +257,8 @@ def aufteilen(md: Path) -> dict:
 
 
 def statistik(zaehler: dict) -> str:
+    if zaehler.get("gesetzestext"):
+        return "Gesetzestext – bleibt unverändert (nur Volltext)"
     gesamt = sum(zaehler.values()) or 1
     namen = {**TEILE, VERWORFEN: "verworfen"}
     return " · ".join(f"{namen[k]} {zaehler[k] * 100 / gesamt:.0f} %" for k in namen if zaehler[k])
@@ -271,7 +287,9 @@ def main():
         try:
             z = aufteilen(md)
             warnung = ""
-            if z["aufgaben"] and not z["loesungen"] and z["lerntext"]:
+            if z.get("gesetzestext"):
+                pass
+            elif z["aufgaben"] and not z["loesungen"] and z["lerntext"]:
                 warnung = "  ⚠ Aufgaben, aber keine Lösungen gefunden"
             elif z["lerntext"] < 0.3 * sum(z.values()) and (z["aufgaben"] or z["loesungen"]) and z["lerntext"]:
                 warnung = "  ⚠ auffällig wenig Lerntext"

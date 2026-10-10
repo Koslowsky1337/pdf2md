@@ -2,7 +2,7 @@ r"""
 Gesamtprüfung aller umgewandelten Hefte gegen die Original-PDFs (Regressionstest nach Code-Änderungen).
 
 Aufruf:
-    python tools\endpruefung.py "D:\Skripte"    -> prüft D:\Skripte gegen output\Skripte
+    python tools\endpruefung.py "<PDF-Ordner>"  -> prüft <PDF-Ordner> gegen output\<Name des PDF-Ordners>
 
 Voraussetzung: Der Ordner wurde vorher mit pdf2md umgewandelt.
 Endet mit „ERGEBNIS: alles in Ordnung“ oder „PROBLEME GEFUNDEN“ (Exit-Code 1).
@@ -12,9 +12,15 @@ import pathlib
 import re
 import sys
 
+for strom in (sys.stdout, sys.stderr):      # ✔/✘ dürfen bei umgeleiteter Ausgabe (cp1252) nicht abstürzen
+    try:
+        strom.reconfigure(errors="replace")
+    except Exception:
+        pass
+
 PROJEKT = pathlib.Path(__file__).resolve().parent.parent
 if len(sys.argv) < 2:
-    sys.exit("Aufruf: python tools\\endpruefung.py <Quellordner mit den PDFs>")
+    sys.exit('Aufruf: python tools\\endpruefung.py "<PDF-Ordner>"')
 QUELLE = pathlib.Path(sys.argv[1])
 sys.argv = sys.argv[:1]                      # pdf2md soll keine Argumente sehen
 sys.path.insert(0, str(PROJEKT))
