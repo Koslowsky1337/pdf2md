@@ -1,0 +1,16 @@
+# Ergebnisse: enthalten Inhalte der umgewandelten PDFs (oft urheberrechtlich geschützt)
+# und lassen sich jederzeit neu erzeugen. Nur der leere Ordner (über .gitkeep) ist im Repo.
+output/*
+!output/.gitkeep
+*.pdf
+
+# Lokaler, persönlicher Arbeitskontext für Claude Code – nicht öffentlich
+CLAUDE.md
+DOCS/
+.claude/settings.local.json
+graphify-out/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
