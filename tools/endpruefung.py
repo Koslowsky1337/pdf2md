@@ -88,6 +88,7 @@ for pdf in pdfs:
     links = re.findall(r"\]\((images/[^)]+)\)", md)
     summe["bildlinks"] += len(links)
     summe["bild_fehlt"] += sum(1 for l in links if not (ziel / l).is_file())
+    summe["bild_mehrfach"] += sum(1 for n in collections.Counter(links).values() if n > 1)
     for teil in ("Lerntext", "Aufgaben", "Lösungen"):
         f = ziel / f"{ziel.name} - {teil}.md"
         if f.is_file():
@@ -111,6 +112,7 @@ print(f"  ℹ Tabellen: {summe['tabellen']} als Tabelle erhalten, {summe['gerett
 print(f"  ℹ Formeln als Bild + LaTeX: {summe['formeln']} ({summe['latex_bloecke']} $$-Blöcke)")
 melde("LaTeX-Fehler ($$ ungerade, { } offen, \\frac/\\text außerhalb)", summe["latex_fehler"], summe["latex_fehler"] == 0)
 melde("Bildlinks ohne Datei", f"{summe['bild_fehlt']} von {summe['bildlinks']}", summe["bild_fehlt"] == 0)
+print(f"  ℹ Bilddateien, die im Volltext an mehr als einer Stelle verlinkt sind: {summe['bild_mehrfach']}")
 print(f"  ℹ Teil-Dateien (Lerntext/Aufgaben/Lösungen): {summe['teile']}")
 melde("niedrigste Vollständigkeit", f"{summe['vollst_min']:.2f} %", summe["vollst_min"] >= 99)
 melde("Seiten mit Lückenmeldung", summe["probleme"], summe["probleme"] == 0)

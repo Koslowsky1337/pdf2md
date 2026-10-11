@@ -57,7 +57,7 @@ Gesamtprüfung aller Ergebnisse gegen die Original-PDFs (z. B. nach Änderungen 
 ```bash
 python tools\endpruefung.py "<PDF-Ordner>"
 ```
-Sie prüft unter anderem, dass alle Formelblöcke gültig sind (gerade Anzahl `$$`, Klammern ausgeglichen, kein LaTeX außerhalb der Blöcke).
+Sie prüft unter anderem, dass alle Formelblöcke gültig sind (gerade Anzahl `$$`, Klammern ausgeglichen, kein LaTeX außerhalb der Blöcke), und zeigt, wie viele Bilddateien an mehr als einer Stelle verlinkt sind.
 
 ## Zusammenfassung pro Heft
 
@@ -69,9 +69,9 @@ Die Zusammenfassung erzeugt Claude Code aus dem Lerntext, über das eigene Claud
 /zusammenfassen alle --neu   alle neu erzeugen
 ```
 
-Ergebnis ist `<Heft> - Zusammenfassung.md` neben dem Lerntext: ein **Lernskript**, mit dem man das Thema ohne das Heft verstehen kann. Pro Unterkapitel (z. B. `### 1.2 Angebot und Nachfrage (S. 12–14)`) gibt es eine Erklärung in ganzen Sätzen, Definitionen im Wortlaut, Formeln als LaTeX mit Erklärung der Größen und dem Rechenbeispiel aus dem Heft, die nötigen Grafiken mit Erläuterung, Tabellen für Vergleiche und Merksätze. Jedes Kapitel endet mit einem Rückblick und einem Selbstcheck (Fragen zum Aufklappen), am Ende steht eine Begriffstabelle. Inhalte kommen nur aus dem Heft; Aufgaben, Lösungen und Literatur gehören nicht hinein. Der Befehl steht in `.claude/commands/zusammenfassen.md`. Ältere Zusammenfassungen ohne `art: "Lernskript"` im Kopf werden beim nächsten Aufruf neu erzeugt.
+Ergebnis ist `<Heft> - Zusammenfassung.md` neben dem Lerntext: ein **Lernskript**, mit dem man das Thema ohne das Heft verstehen kann. Die Gliederung entspricht genau dem Heft. Pro Unterkapitel (z. B. `### 1.2 Angebot und Nachfrage (S. 12–14)`) gibt es eine Erklärung in ganzen Sätzen, Definitionen im Wortlaut, Formeln als LaTeX mit Erklärung der Größen und dem Rechenbeispiel aus dem Heft, die nötigen Grafiken mit Erläuterung, Tabellen für Vergleiche und Merksätze. Jedes Kapitel endet mit einem Rückblick und einem Selbstcheck (Fragen zum Aufklappen), am Ende steht eine Begriffstabelle. Inhalte kommen nur aus dem Heft; Aufgaben, Lösungen und Literatur gehören nicht hinein. Unklare Stellen werden auf der Originalseite der PDF nachgelesen und markiert, Widersprüche im Heft als Hinweis vermerkt. Der Befehl steht in `.claude/commands/zusammenfassen.md`. Ältere Zusammenfassungen ohne `art: "Lernskript"` im Kopf werden beim nächsten Aufruf neu erzeugt.
 
-Jedes Lernskript wird automatisch geprüft: alle Kapitel und Unterkapitel mit gültigen Seitenangaben, alle Definitionen, jede Zahl steht im Heft, LaTeX und Bildlinks in Ordnung, keine Aufgaben/Lösungen, Länge 25–35 % des Lerntexts. Die Prüfung lässt sich auch einzeln starten und listet am Ende die Hefte ohne Zusammenfassung:
+Jedes Lernskript wird automatisch geprüft: alle Kapitel, Unterkapitel und Unter-Unterkapitel mit Nummer und gültigen Seitenangaben, alle Definitionen, jede Zahl steht im Heft, LaTeX und Bildlinks in Ordnung, keine Aufgaben/Lösungen, Länge 25–35 % des Lerntexts. Die Prüfung lässt sich auch einzeln starten und listet am Ende die Hefte ohne Zusammenfassung:
 ```bash
 python tools\zusammenfassung_pruefen.py
 ```
@@ -79,7 +79,7 @@ python tools\zusammenfassung_pruefen.py
 ## Verhalten
 
 - **Markierungen** (Textmarker, Unterstreichung) werden im Text **fett** gesetzt, Durchgestrichenes als ~~durchgestrichen~~. Am Ende jeder .md steht zusätzlich eine Liste „Markierungen & Kommentare“ je Seite, inklusive Notizen.
-- **Grafiken:** Eingebettete Bilder **und** gezeichnete Diagramme werden als PNG gespeichert. Zerstückelte Diagramm-Teile werden zu einem Bild zusammengefasst. Mini-Icons und Linien werden ignoriert, doppelte Bilder nur einmal gespeichert.
+- **Grafiken:** Eingebettete Bilder **und** gezeichnete Diagramme werden als PNG gespeichert. Zerstückelte Diagramm-Teile werden zu einem Bild zusammengefasst. Mini-Icons und Linien werden ignoriert. Doppelte Bilder werden nur einmal gespeichert, aber nur, wenn sie pixelgenau gleich sind (ähnlich aussehende Formeln bekommen jeweils ihre eigene Datei).
 - **Seitenmarker:** `<!-- Seite N -->` ist in der Vorschau unsichtbar, aber Claude kann damit Seitenzahlen zuordnen.
 - **Qualitätsprüfung:** Nach jeder Umwandlung wird geprüft, ob jedes Wort und jede Zahl aus der Textebene der PDF auch in der `.md` steht. Kopf- und Fußzeilen werden dabei nicht mitgezählt. Das Ergebnis steht in der Konsole, im Kopf der `.md` (`vollstaendigkeit: "99,81 %"`) und in `_index.md`. Seiten mit Lücken werden oben in der `.md` gemeldet („Seite 47: … – bitte prüfen“).
 - **Formeln:** Formeln werden als Bild übernommen und zusätzlich als LaTeX-Block mit echten Brüchen, z. B. `$$ \text{Quote} = \frac{\text{Wert A} \cdot 100}{\text{Wert B}} $$` (in der .md stehen die `$$` jeweils allein in einer Zeile). In VS Code zeigt die Vorschau (**Strg+Shift+V**, oder Strg+K V für die Vorschau daneben) die Formeln als echte Formeln. Verschachtelte Brüche werden erkannt; Rechenschemata mit Summenstrich („– Kosten / = Ergebnis“) bleiben Zeilen. Maßgeblich bleibt das Bild. Ohne diesen Schritt würde die Layout-KI Formeln komplett weglassen.

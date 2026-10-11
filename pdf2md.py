@@ -17,6 +17,7 @@ Ordner:    <Script-Ordner>/output/<Ordner>/<Unterordner…>/<PDF-Name>/…  +  _
 import argparse
 import bisect
 import collections
+import hashlib
 import os
 import re
 import shutil
@@ -157,25 +158,8 @@ class BildSpeicher:
 
     def __init__(self, ordner: Path):
         self.ordner = ordner
-        self.bekannt = []          # (breite, hoehe, mini-graustufen, link)
+        self.bekannt = {}          # (breite, hoehe, sha1 der Pixeldaten) -> link
         self.anzahl = 0
-
-    @staticmethod
-    def _mini(pix) -> bytes:
-        """24x24-Graustufen-Vorschau für den Duplikat-Vergleich."""
-        if pix.alpha:
-            pix = pymupdf.Pixmap(pix, 0)
-        if pix.n != 1:
-            pix = pymupdf.Pixmap(pymupdf.csGRAY, pix)
-        return pymupdf.Pixmap(pix, 24, 24, None).samples
-
-    def _duplikat(self, pix, mini) -> str | None:
-        # Gleiche Bilder an anderer Position rendern minimal anders (Rundung, Kantenglättung)
-        for b, h, m, link in self.bekannt:
-            if abs(b - pix.width) <= 3 and abs(h - pix.height) <= 3:
-                if sum(abs(x - y) for x, y in zip(m, mini)) / len(mini) < 4:
-                    return link
-        return None
 
     def speichern(self, page, rect, ganze_seite=False, minimum=MIN_BILD_PT) -> str | None:
         clip = None if ganze_seite else pymupdf.Rect(rect) & page.rect
@@ -184,16 +168,16 @@ class BildSpeicher:
         pix = page.get_pixmap(dpi=BILD_DPI, clip=clip, annots=False)
         if pix.width < 2 or pix.height < 2:
             return None
-        mini = self._mini(pix)
-        link = self._duplikat(pix, mini)
-        if link:
-            return link
+        # Nur pixelgleiche Bilder zusammenlegen: ähnliche (z. B. einzeilige Formeln) sind oft verschieden
+        schluessel = (pix.width, pix.height, hashlib.sha1(pix.samples).hexdigest())
+        if schluessel in self.bekannt:
+            return self.bekannt[schluessel]
         self.ordner.mkdir(parents=True, exist_ok=True)
         self.anzahl += 1
         name = f"seite{page.number + 1:03d}_bild{self.anzahl:02d}.png"
         pix.save(self.ordner / name)
         link = f"images/{name}"
-        self.bekannt.append((pix.width, pix.height, mini, link))
+        self.bekannt[schluessel] = link
         return link
 
 

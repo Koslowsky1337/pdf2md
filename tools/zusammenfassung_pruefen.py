@@ -6,10 +6,11 @@ Aufruf:
     python tools\zusammenfassung_pruefen.py "output\<Name des PDF-Ordners>"  -> nur dieser Ordner (rekursiv)
     python tools\zusammenfassung_pruefen.py "output\<Name des PDF-Ordners>\…\<Heft>"  -> nur dieses Heft
 
-Fehler (✘): YAML-Kopf, alle Hauptkapitel („## N“) und Unterkapitel („### N.M … (S. a–b)“) mit gültigen
-Seitenangaben, alle nummerierten Definitionen, keine Übungen/Aufgaben/Lösungen/Literatur/Quellen,
-jede Zahl (ab 2 Ziffern) steht im Lerntext, LaTeX-Blöcke in Ordnung, jeder Bildlink zeigt auf eine Datei.
-Nur Warnungen: Länge außerhalb 20–45 % (Ziel 25–35 %), Fettbegriffe, die im Lerntext fehlen,
+Fehler (✘): YAML-Kopf, alle Hauptkapitel („## N“), Unterkapitel („### N.M … (S. a–b)“) mit gültigen
+Seitenangaben und Unter-Unterkapitel („#### N.M.K“), alle nummerierten Definitionen, keine Übungen/
+Aufgaben/Lösungen/Literatur/Quellen in Überschriften (außer echten Kapiteltiteln), jede Zahl (ab 2 Ziffern)
+steht im Lerntext, LaTeX-Blöcke in Ordnung, jeder Bildlink zeigt auf eine Datei.
+Nur Warnungen: tiefere Kapitel (N.M.K.L), Länge außerhalb 20–45 % (Ziel 25–35 %), Fettbegriffe, die im Lerntext fehlen,
 Abschnitte, deren Inhaltswörter nicht auf ihren Seiten stehen, fehlender Selbstcheck.
 Danach folgt die Liste der Hefte, die noch keine Zusammenfassung haben. Exit-Code 1 bei Fehlern.
 """
@@ -30,11 +31,18 @@ import aufteilen                             # noqa: E402
 VERBOTEN = re.compile(r"übung|aufgabe|lösung|literatur|quellen", re.I)
 BILD = re.compile(r"!\[[^\]]*\]\(([^)]*)\)")
 SEITENMARKE = re.compile(r"<!-- Seite \d+ -->")
-SEITENANGABE = re.compile(r"\(S\.[^)]*\)|\bS\.\s*\d+(?:\s*[–-]\s*\d+)?")
+# auch Kurzformen „S. 53, 84“ und „S. 53–55, S. 84“
+SEITENANGABE = re.compile(r"\(S\.[^)]*\)|\bS\.\s*\d+(?:\s*[–-]\s*\d+)?(?:\s*,\s*(?:S\.\s*)?\d+(?:\s*[–-]\s*\d+)?)*")
 SEITENBEREICH = re.compile(r"\(S\.\s*(\d+)(?:\s*[–-]\s*(\d+))?\)")
 ZAHL = re.compile(r"\b\d{1,3}(?:[ .\u00a0\u202f]\d{3})+\b|\d+")      # mit Tausendertrennern oder ohne
 # Beschriftungen aus dem Format des Lernskripts – keine Fachbegriffe
-FORMAT_FETT = {"formel", "rechenbeispiel aus dem heft", "beispiel aus dem heft", "merke", "dabei ist"}
+FORMAT_FETT = {"formel", "rechenbeispiel aus dem heft", "beispiel aus dem heft", "merke", "dabei ist", "hinweis"}
+
+
+def titel(zeile: str) -> str:
+    """Überschrift als „1.2.3 Titel“: ohne Markdown, ohne Punkt nach der Nummer, ohne „(S. …)“ am Ende."""
+    t = re.sub(r"\s*\(S\.[^)]*\)$", "", aufteilen.klartext(zeile))
+    return re.sub(r"^(\d+(?:\.\d+)*)\.?\s+", r"\1 ", t)
 
 
 def latex_fehler(md: str) -> int:
@@ -79,23 +87,24 @@ def pruefen(lerntext: pathlib.Path, zusammenfassung: pathlib.Path):
         fehler.append('YAML-Kopf mit teil: "Zusammenfassung" fehlt')
     inhalt = [(nr, z) for nr, z in enumerate(zf_zeilen, 1) if nr > start]   # ohne YAML-Kopf
 
-    # b) Hauptkapitel, b2) Unterkapitel
-    kapitel, unterkapitel, kapitel_titel = [], [], set()   # Titel als „8 Titel“, ohne ** und mit normalisiertem Leerraum
+    # b) Hauptkapitel, b2) Unterkapitel, b3) Unter-Unterkapitel; tiefere Ebenen nur Warnung
+    ebenen = {0: [], 1: [], 2: [], 3: []}         # Anzahl Punkte (3 = drei und mehr) -> Nummern
+    kapitel_titel = set()                         # alle Tiefen, als „1.2.3 Titel“
     for z in lt.splitlines():
         if m := aufteilen.KAPITEL.match(z):
             nr = m.group(1)
-            if "." not in nr:
-                kapitel_titel.add(aufteilen.klartext(z[m.start(1):]))
-                if nr not in kapitel:
-                    kapitel.append(nr)
-            elif nr.count(".") == 1 and nr not in unterkapitel:
-                unterkapitel.append(nr)
-    fehlend = [k for k in kapitel if not any(re.match(rf"##\s+{k}(\s|$)", z) for z in zf_zeilen)]
-    if fehlend:
-        fehler.append(f"Hauptkapitel fehlen als „## <Nr> …“: {', '.join(fehlend)}")
-    fehlend = [k for k in unterkapitel if not any(re.match(rf"###\s+{re.escape(k)}(\s|$)", z) for z in zf_zeilen)]
-    if fehlend:
-        fehler.append(f"Unterkapitel fehlen als „### <Nr> …“: {', '.join(fehlend)}")
+            kapitel_titel.add(titel(z[m.start(1):]))
+            ebene = ebenen[min(nr.count("."), 3)]
+            if nr not in ebene:
+                ebene.append(nr)
+    for punkte, rauten, name in ((0, "##", "Hauptkapitel"), (1, "###", "Unterkapitel"),
+                                 (2, "####", "Unter-Unterkapitel"), (3, "#{4,6}", "tiefere Kapitel")):
+        fehlend = [k for k in ebenen[punkte]
+                   if not any(re.match(rf"{rauten}\s+{re.escape(k)}(\s|$)", z) for z in zf_zeilen)]
+        if fehlend:
+            meldung = f"{name} fehlen als „{rauten.replace('{4,6}', '####')} <Nr> …“: {', '.join(fehlend)}"
+            (warnungen if punkte == 3 else fehler).append(meldung)
+    kapitel_ohne_nr = {t.split(" ", 1)[-1].lower() for t in kapitel_titel}
 
     # c) nummerierte Definitionen
     definitionen = dict.fromkeys(re.findall(r"Definition\s+(\d+(?:\.\d+)*)", lt))
@@ -111,9 +120,9 @@ def pruefen(lerntext: pathlib.Path, zusammenfassung: pathlib.Path):
     if falsch:
         fehler.append(f"Seitenangaben ohne passende Seite im Lerntext: {', '.join(map(str, falsch))}")
 
-    # e) verbotene Überschriften – erlaubt nur, wenn „## <Nr> <Titel>“ genau ein Hauptkapitel des Lerntexts ist
+    # e) verbotene Überschriften – erlaubt nur, wenn Nummer und Titel genau einem Kapitel des Lerntexts entsprechen
     verboten = [z.strip() for z in zf_zeilen if aufteilen.UEBERSCHRIFT.match(z) and VERBOTEN.search(z)
-                and not (re.match(r"##\s", z) and aufteilen.klartext(z) in kapitel_titel)]
+                and titel(z) not in kapitel_titel]
     if verboten:
         fehler.append(f"verbotene Überschriften: {'; '.join(verboten)}")
 
@@ -128,7 +137,7 @@ def pruefen(lerntext: pathlib.Path, zusammenfassung: pathlib.Path):
     for nr, z in inhalt:
         z = z.replace("\\,", " ").replace("{,}", ",")                    # LaTeX-Zahlen wie im Heft schreiben
         z = re.sub(r"Definition\s+\d+(?:\.\d+)*", " ", SEITENANGABE.sub(" ", BILD.sub(" ", z)))
-        z = re.sub(r"^#{2,3}\s+\d+(?:\.\d+)?", " ", z)                  # Kapitel- und Unterkapitelnummern
+        z = re.sub(r"^#{2,6}\s+\d+(?:\.\d+)*", " ", z)                  # Kapitelnummern aller Ebenen
         z = re.sub(r"\|\s*\d+(?:\s*[–-]\s*\d+)?\s*\|\s*$", "|", z)      # Seiten-Spalte der Begriffstabelle
         ganz, _ = zahlen(z)
         for zahl, roh in ganz.items():
@@ -143,10 +152,15 @@ def pruefen(lerntext: pathlib.Path, zusammenfassung: pathlib.Path):
     lt_flach = re.sub(r"\s+", " ", re.sub(r"\*\*|(?<!\w)_|_(?!\w)", "", lt)).lower()
     fett_fehlt = []
     for nr, z in inhalt:
-        for begriff in re.findall(r"\*\*(.+?)\*\*", z):
-            begriff = re.sub(r"^Definition\s+\d+(?:\.\d+)*\s*[–-]\s*", "", begriff).strip().rstrip(":").strip()
-            if begriff and begriff.lower() not in FORMAT_FETT and re.sub(r"\s+", " ", begriff).lower() not in lt_flach:
-                fett_fehlt.append(f"{begriff} (Zeile {nr})")
+        for fett in re.findall(r"\*\*(.+?)\*\*", z):
+            fett = re.sub(r"\s+", " ", fett).strip().rstrip(":").strip()
+            # Struktur-Beschriftungen: „Definition 1.2 – …“, „… (1.1)“, Format-Wörter, Kapiteltitel
+            if (re.match(r"Definition\s+\d", fett) or re.search(r"\(\d+(?:\.\d+)*\)$", fett)
+                    or fett.lower() in FORMAT_FETT or titel(fett) in kapitel_titel or fett.lower() in kapitel_ohne_nr):
+                continue
+            for begriff in fett.split(" / "):                          # Begriffspaar „A / B“
+                if (begriff := begriff.strip()) and begriff.lower() not in lt_flach:
+                    fett_fehlt.append(f"{begriff} (Zeile {nr})")
     if fett_fehlt:
         warnungen.append(f"Fettbegriffe nicht im Lerntext ({len(fett_fehlt)}): {'; '.join(fett_fehlt[:10])}"
                          + (" …" if len(fett_fehlt) > 10 else ""))
