@@ -8,6 +8,7 @@ Voraussetzung: Der Ordner wurde vorher mit pdf2md umgewandelt.
 Endet mit „ERGEBNIS: alles in Ordnung“ oder „PROBLEME GEFUNDEN“ (Exit-Code 1).
 """
 import collections
+import hashlib
 import pathlib
 import re
 import sys
@@ -89,6 +90,10 @@ for pdf in pdfs:
     summe["bildlinks"] += len(links)
     summe["bild_fehlt"] += sum(1 for l in links if not (ziel / l).is_file())
     summe["bild_mehrfach"] += sum(1 for n in collections.Counter(links).values() if n > 1)
+    for bild in (ziel / "images").glob("*"):       # Name muss zum Inhalt passen: seiteNNN_<sha1[:10]>.png
+        summe["bilddateien"] += 1
+        m = re.fullmatch(r"seite\d{3}_([0-9a-f]{10})\.png", bild.name)
+        summe["bild_name"] += not (m and hashlib.sha1(bild.read_bytes()).hexdigest()[:10] == m.group(1))
     for teil in ("Lerntext", "Aufgaben", "Lösungen"):
         f = ziel / f"{ziel.name} - {teil}.md"
         if f.is_file():
@@ -112,6 +117,8 @@ print(f"  ℹ Tabellen: {summe['tabellen']} als Tabelle erhalten, {summe['gerett
 print(f"  ℹ Formeln als Bild + LaTeX: {summe['formeln']} ({summe['latex_bloecke']} $$-Blöcke)")
 melde("LaTeX-Fehler ($$ ungerade, { } offen, \\frac/\\text außerhalb)", summe["latex_fehler"], summe["latex_fehler"] == 0)
 melde("Bildlinks ohne Datei", f"{summe['bild_fehlt']} von {summe['bildlinks']}", summe["bild_fehlt"] == 0)
+melde("Bilddateien, deren Name nicht zu Muster/SHA-1 passt", f"{summe['bild_name']} von {summe['bilddateien']}",
+      summe["bild_name"] == 0)
 print(f"  ℹ Bilddateien, die im Volltext an mehr als einer Stelle verlinkt sind: {summe['bild_mehrfach']}")
 print(f"  ℹ Teil-Dateien (Lerntext/Aufgaben/Lösungen): {summe['teile']}")
 melde("niedrigste Vollständigkeit", f"{summe['vollst_min']:.2f} %", summe["vollst_min"] >= 99)

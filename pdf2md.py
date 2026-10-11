@@ -158,7 +158,7 @@ class BildSpeicher:
 
     def __init__(self, ordner: Path):
         self.ordner = ordner
-        self.bekannt = {}          # (breite, hoehe, sha1 der Pixeldaten) -> link
+        self.bekannt = {}          # sha1 der PNG-Datei -> link
         self.anzahl = 0
 
     def speichern(self, page, rect, ganze_seite=False, minimum=MIN_BILD_PT) -> str | None:
@@ -168,16 +168,18 @@ class BildSpeicher:
         pix = page.get_pixmap(dpi=BILD_DPI, clip=clip, annots=False)
         if pix.width < 2 or pix.height < 2:
             return None
-        # Nur pixelgleiche Bilder zusammenlegen: ähnliche (z. B. einzeilige Formeln) sind oft verschieden
-        schluessel = (pix.width, pix.height, hashlib.sha1(pix.samples).hexdigest())
-        if schluessel in self.bekannt:
-            return self.bekannt[schluessel]
+        # Name aus dem Inhalt: ein Link zeigt nach einer Neuumwandlung nie still auf ein anderes Bild,
+        # und nur dateigleiche Bilder werden zusammengelegt (ähnliche, z. B. einzeilige Formeln, nicht)
+        png = pix.tobytes("png")
+        sha1 = hashlib.sha1(png).hexdigest()
+        if sha1 in self.bekannt:
+            return self.bekannt[sha1]
         self.ordner.mkdir(parents=True, exist_ok=True)
         self.anzahl += 1
-        name = f"seite{page.number + 1:03d}_bild{self.anzahl:02d}.png"
-        pix.save(self.ordner / name)
+        name = f"seite{page.number + 1:03d}_{sha1[:10]}.png"
+        (self.ordner / name).write_bytes(png)
         link = f"images/{name}"
-        self.bekannt[schluessel] = link
+        self.bekannt[sha1] = link
         return link
 
 
@@ -633,9 +635,11 @@ def seite_aufbauen(page, chunk, bilder: BildSpeicher, hinweise: list) -> str:
             # ganze Textspalte zerschnitten oder nach dem Flicken noch Wortstümpfe -> Bild + Fließtext
             if schnitte >= 3 or tabelle_stuempfe(stueck, woerter):
                 stueck = tabelle_retten(page, pymupdf.Rect(b["bbox"]), bilder, hinweise, woerter)
-        elif b["class"] == "formula" or (b["class"] in ("text", "list-item") and "=" in stueck):
+        elif b["class"] == "formula" or (b["class"] in ("text", "list-item", "section-header", "caption")
+                                         and "=" in stueck):
             # Formeln: die Layout-KI liefert für „formula“ gar keinen Text, in Textboxen wird ein Bruch
             # zu „A ⋅100 = 1 890 ⋅100 = 69,31 % B 2 727“ zerwürfelt -> Bild + Text mit echten Brüchen
+            # (die Layout-KI hält einen Bruch auch mal für Überschrift oder Bildunterschrift)
             striche = _bruchstriche(page) if striche is None else striche
             rect = pymupdf.Rect(b["bbox"])
             if b["class"] == "formula" or formel_text(page, rect + (-2, -2, 2, 2), striche)[1]:
@@ -752,7 +756,7 @@ def chunks_erzeugen(doc, hinweise, fortschritt=False):
 def ausgabe_ordner(pdf: Path, eltern: Path) -> Path:
     """Ordner für eine PDF; kürzt den Namen, damit Windows' 260-Zeichen-Grenze nicht reißt."""
     basis = sicherer_name(pdf.stem)
-    platz = 225 - len(str(eltern)) - len("/images/seite000_bild000.png")  # Reserve für Bilddateien
+    platz = 225 - len(str(eltern)) - len("/images/seite000_0123456789.png")  # Reserve für Bilddateien
     platz = max(12, platz // 2)                                           # Name steckt 2x im .md-Pfad
     return eltern / (basis[:platz].strip(" .") or "pdf")
 

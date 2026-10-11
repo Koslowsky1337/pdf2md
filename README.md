@@ -25,7 +25,7 @@ python -m pip install -r requirements.txt
 **Einzelne PDF:**
 ```
 output\<PDF-Name>\<PDF-Name>.md
-output\<PDF-Name>\images\seite002_bild01.png
+output\<PDF-Name>\images\seite002_3f9a1c07be.png
 ```
 
 **Ordner** (Unterordner werden gespiegelt):
@@ -57,7 +57,7 @@ Gesamtprüfung aller Ergebnisse gegen die Original-PDFs (z. B. nach Änderungen 
 ```bash
 python tools\endpruefung.py "<PDF-Ordner>"
 ```
-Sie prüft unter anderem, dass alle Formelblöcke gültig sind (gerade Anzahl `$$`, Klammern ausgeglichen, kein LaTeX außerhalb der Blöcke), und zeigt, wie viele Bilddateien an mehr als einer Stelle verlinkt sind.
+Sie prüft unter anderem, dass alle Formelblöcke gültig sind (gerade Anzahl `$$`, Klammern ausgeglichen, kein LaTeX außerhalb der Blöcke), dass jeder Bilddateiname zur Prüfsumme seines Inhalts passt, und zeigt, wie viele Bilddateien an mehr als einer Stelle verlinkt sind.
 
 ## Zusammenfassung pro Heft
 
@@ -79,7 +79,7 @@ python tools\zusammenfassung_pruefen.py
 ## Verhalten
 
 - **Markierungen** (Textmarker, Unterstreichung) werden im Text **fett** gesetzt, Durchgestrichenes als ~~durchgestrichen~~. Am Ende jeder .md steht zusätzlich eine Liste „Markierungen & Kommentare“ je Seite, inklusive Notizen.
-- **Grafiken:** Eingebettete Bilder **und** gezeichnete Diagramme werden als PNG gespeichert. Zerstückelte Diagramm-Teile werden zu einem Bild zusammengefasst. Mini-Icons und Linien werden ignoriert. Doppelte Bilder werden nur einmal gespeichert, aber nur, wenn sie pixelgenau gleich sind (ähnlich aussehende Formeln bekommen jeweils ihre eigene Datei).
+- **Grafiken:** Eingebettete Bilder **und** gezeichnete Diagramme werden als PNG gespeichert. Zerstückelte Diagramm-Teile werden zu einem Bild zusammengefasst. Mini-Icons und Linien werden ignoriert. Der Dateiname besteht aus der Seite des ersten Vorkommens und dem Anfang der SHA-1-Prüfsumme des Bildes (`seite002_3f9a1c07be.png`). So zeigt ein Link nach einer erneuten Umwandlung nie still auf ein anderes Bild, und doppelte Bilder werden nur einmal gespeichert, aber nur, wenn sie exakt gleich sind (ähnlich aussehende Formeln bekommen jeweils ihre eigene Datei).
 - **Seitenmarker:** `<!-- Seite N -->` ist in der Vorschau unsichtbar, aber Claude kann damit Seitenzahlen zuordnen.
 - **Qualitätsprüfung:** Nach jeder Umwandlung wird geprüft, ob jedes Wort und jede Zahl aus der Textebene der PDF auch in der `.md` steht. Kopf- und Fußzeilen werden dabei nicht mitgezählt. Das Ergebnis steht in der Konsole, im Kopf der `.md` (`vollstaendigkeit: "99,81 %"`) und in `_index.md`. Seiten mit Lücken werden oben in der `.md` gemeldet („Seite 47: … – bitte prüfen“).
 - **Formeln:** Formeln werden als Bild übernommen und zusätzlich als LaTeX-Block mit echten Brüchen, z. B. `$$ \text{Quote} = \frac{\text{Wert A} \cdot 100}{\text{Wert B}} $$` (in der .md stehen die `$$` jeweils allein in einer Zeile). In VS Code zeigt die Vorschau (**Strg+Shift+V**, oder Strg+K V für die Vorschau daneben) die Formeln als echte Formeln. Verschachtelte Brüche werden erkannt; Rechenschemata mit Summenstrich („– Kosten / = Ergebnis“) bleiben Zeilen. Maßgeblich bleibt das Bild. Ohne diesen Schritt würde die Layout-KI Formeln komplett weglassen.
