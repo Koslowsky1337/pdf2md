@@ -9,8 +9,9 @@ Aufruf:
 Fehler (✘): YAML-Kopf, alle Hauptkapitel („## N“), Unterkapitel („### N.M … (S. a–b)“) mit gültigen
 Seitenangaben und Unter-Unterkapitel („#### N.M.K“), alle nummerierten Definitionen, keine Übungen/
 Aufgaben/Lösungen/Literatur/Quellen in Überschriften (außer echten Kapiteltiteln), jede Zahl (ab 2 Ziffern)
-steht im Lerntext, LaTeX-Blöcke in Ordnung, jeder Bildlink zeigt auf eine Datei.
-Nur Warnungen: tiefere Kapitel (N.M.K.L), Länge außerhalb 20–45 % (Ziel 25–35 %), Fettbegriffe, die im Lerntext fehlen,
+steht im Lerntext (nicht nur in Kommentaren wie Bildtext), LaTeX-Blöcke in Ordnung, jeder Bildlink zeigt auf eine
+Datei, Länge über 55 %.
+Nur Warnungen: tiefere Kapitel (N.M.K.L), Länge außerhalb 25–55 % (Ziel 30–45 %), Fettbegriffe, die im Lerntext fehlen,
 Abschnitte, deren Inhaltswörter nicht auf ihren Seiten stehen, fehlender Selbstcheck.
 Danach folgt die Liste der Hefte, die noch keine Zusammenfassung haben. Exit-Code 1 bei Fehlern.
 """
@@ -30,7 +31,7 @@ import aufteilen                             # noqa: E402
 
 VERBOTEN = re.compile(r"übung|aufgabe|lösung|literatur|quellen", re.I)
 BILD = re.compile(r"!\[[^\]]*\]\(([^)]*)\)")
-SEITENMARKE = re.compile(r"<!-- Seite \d+ -->")
+KOMMENTAR = re.compile(r"<!--.*?-->", re.S)          # Seitenmarken, Bildtext
 # auch Kurzformen „S. 53, 84“ und „S. 53–55, S. 84“
 SEITENANGABE = re.compile(r"\(S\.[^)]*\)|\bS\.\s*\d+(?:\s*[–-]\s*\d+)?(?:\s*,\s*(?:S\.\s*)?\d+(?:\s*[–-]\s*\d+)?)*")
 SEITENBEREICH = re.compile(r"\(S\.\s*(\d+)(?:\s*[–-]\s*(\d+))?\)")
@@ -128,11 +129,13 @@ def pruefen(lerntext: pathlib.Path, zusammenfassung: pathlib.Path):
 
     # f) Länge
     prozent = len(zf) * 100 / max(len(lt), 1)
-    if not 20 <= prozent <= 45:
-        warnungen.append(f"Länge {prozent:.1f} % (Ziel 25–35 %, Warnung außerhalb 20–45 %)")
+    if prozent > 55:
+        fehler.append(f"Länge {prozent:.1f} % über 55 % (Ziel 30–45 %) – kürzen")
+    elif prozent < 25:
+        warnungen.append(f"Länge {prozent:.1f} % (Ziel 30–45 %, Warnung außerhalb 25–55 %)")
 
-    # g) Zahlen: jede Ziffernfolge ab 2 Ziffern muss im Lerntext stehen
-    lt_zahlen, lt_teile = zahlen(BILD.sub(" ", SEITENMARKE.sub(" ", lt)))
+    # g) Zahlen: jede Ziffernfolge ab 2 Ziffern muss im Lerntext stehen – Kommentare (Bildtext) zählen nicht
+    lt_zahlen, lt_teile = zahlen(BILD.sub(" ", KOMMENTAR.sub(" ", lt)))
     zahl_fehler = []
     for nr, z in inhalt:
         z = z.replace("\\,", " ").replace("{,}", ",")                    # LaTeX-Zahlen wie im Heft schreiben
@@ -154,8 +157,8 @@ def pruefen(lerntext: pathlib.Path, zusammenfassung: pathlib.Path):
     for nr, z in inhalt:
         for fett in re.findall(r"\*\*(.+?)\*\*", z):
             fett = re.sub(r"\s+", " ", fett).strip().rstrip(":").strip()
-            # Struktur-Beschriftungen: „Definition 1.2 – …“, „… (1.1)“, Format-Wörter, Kapiteltitel
-            if (re.match(r"Definition\s+\d", fett) or re.search(r"\(\d+(?:\.\d+)*\)$", fett)
+            # Struktur-Beschriftungen: „Definition 1.2 – …“, „a) …“, „Formel (…)“, „… (1.1)“, Format-Wörter, Kapiteltitel
+            if (re.match(r"Definition\s+\d|[a-z]\) |Formel \(", fett) or re.search(r"\(\d+(?:\.\d+)*\)$", fett)
                     or fett.lower() in FORMAT_FETT or titel(fett) in kapitel_titel or fett.lower() in kapitel_ohne_nr):
                 continue
             for begriff in fett.split(" / "):                          # Begriffspaar „A / B“

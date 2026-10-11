@@ -35,10 +35,11 @@ Erzeuge für Hefte unter `output/` je ein Lernskript aus dem bereinigten Lerntex
 - Für jeden betroffenen Ordner `output/<Ordner>/`: Lies in `output/<Ordner>/_index.md` die Zeile ``Quelle: `…` `` und führe `python pdf2md.py --nogui --index "<Quelle>"` aus. Damit verlinkt der Index die neuen Lernskripte.
 - Gib am Ende eine Tabelle aus: `Heft | Status | Länge in % (vor/nach Korrektur) | Zahlen ✔/✘ | Fettbegriff-Warnungen | unplausible Abschnitte in % | Formeln | Grafiken | Selbstcheck-Fragen` (Status: erstellt / korrigiert / übersprungen / Fehler; Werte aus der Kopfzeile des Prüfskripts).
 - Danach eigene Listen aus den Meldungen der Subagents: „Nicht rekonstruierbare Formeln“, „Stellen nach Originalseite“, „Widersprüche im Heft“ und „ausgelassene Stellen“ (jeweils Heft + Seite).
+- Zum Schluss den Ordner `output/_seiten/` (Seitenbilder von `tools/seite_anzeigen.py`) löschen – nur diesen Ordner.
 
 ## 5. Grenzen
 
-- Verändere keine anderen Dateien als die Zusammenfassungen und (über `--index`) die `_index.md`.
+- Verändere keine anderen Dateien als die Zusammenfassungen, (über `--index`) die `_index.md` und die Seitenbilder in `output/_seiten/`.
 
 ---
 
@@ -46,12 +47,13 @@ Erzeuge für Hefte unter `output/` je ein Lernskript aus dem bereinigten Lerntex
 
 1. **Komplett lesen:** Lies den Lerntext vollständig, in Abschnitten (z. B. je 400 Zeilen), bis zur letzten Zeile. Nenne zur Kontrolle die letzte `<!-- Seite N -->`.
 2. **Nur der Lerntext zählt:** Kein Fremdwissen. Zahlen, Definitionen und Rechenwege exakt aus dem Heft (nichts selbst ausrechnen, runden oder umformulieren). **Zahlen nur, wenn sie im Text des Lerntexts stehen**; Zahlen, die nur in einer Grafik zu sehen sind, in Worten beschreiben. **Erklären ist ausdrücklich erwünscht:** in eigenen, klaren Worten, so dass man das Thema **ohne das Heft** versteht – aber inhaltlich nichts hinzuerfinden. Keine Aufgaben oder Lösungen aus dem Heft, keine Literatur oder Quellen. Sprache Deutsch.
-   - **Keine eigene Lesart:** Ist eine Stelle im Lerntext unverständlich oder durcheinander (Tabelle, Beispiel, Formel, Formelbild passt nicht zum Text), lies die Originalseite der PDF mit dem Read-Tool (Parameter `pages`). Den PDF-Pfad findest du so: Quellordner aus der Zeile ``Quelle: `…` `` in `output/<Ordner>/_index.md`, darin die Datei aus `quelle:` im YAML-Kopf des Lerntexts (notfalls rekursiv nach dem Dateinamen suchen). Gib die Stelle korrekt wieder und schreib „(nach Originalseite S. x)“ dazu. Ist die PDF nicht auffindbar: Stelle auslassen und in der Abschlussmeldung nennen.
+   - **Keine eigene Lesart:** Ist eine Stelle im Lerntext unverständlich oder durcheinander (Tabelle, Beispiel, Formel, Formelbild passt nicht zum Text), lies die Originalseite mit `python tools/seite_anzeigen.py "<PDF>" <Seite>` und sieh dir das ausgegebene PNG mit dem Read-Tool an. Das Read-Tool direkt auf die PDF funktioniert hier nicht. Die Seitenbilder liegen in `output/_seiten/`. `<Seite>` ist die Zahl aus `<!-- Seite N -->`. Den PDF-Pfad findest du so: Quellordner aus der Zeile ``Quelle: `…` `` in `output/<Ordner>/_index.md`, darin die Datei aus `quelle:` im YAML-Kopf des Lerntexts (notfalls rekursiv nach dem Dateinamen suchen). Gib die Stelle korrekt wieder und schreib „(nach Originalseite S. x)“ dazu. Ist die PDF nicht auffindbar: Stelle auslassen und in der Abschlussmeldung nennen.
+   - **Sperren des Rechtesystems NIE umgehen** (z. B. Seiten auf anderem Weg rendern oder Dateien kopieren, um eine Lesesperre auszuhebeln). Ist die Originalseite nicht lesbar: Stelle auslassen und in der Abschlussmeldung nennen.
    - **Widersprüche im Heft** offen vermerken, nicht selbst auflösen: `> **Hinweis:** Im Heft widersprüchlich: … (S. x, S. y)`.
 3. **Formeln:** `$$`-Blöcke **nur für Formeln, die im Heft stehen** (als Formelbild oder als Text). **Keine allgemeinen Formeln aus Rechenbeispielen ableiten**; ein Rechenbeispiel wird so gezeigt, wie es im Heft steht. Öffne zu jeder Formel das Formelbild (Read-Tool auf die PNG im Ordner `images/`) und schreib die Formel als korrektes LaTeX in einen eigenen Block: `$$` allein in einer Zeile, darunter die Formel, darunter wieder `$$` allein in einer Zeile. Die LaTeX-Fassung im Lerntext ist nur ein Entwurf – maßgeblich ist das Bild. Darunter: „Dabei ist:“ mit der Bedeutung jeder Größe, dann **Rechenbeispiel aus dem Heft** Schritt für Schritt mit den Zahlen des Hefts (falls das Heft eines hat). Lässt sich eine Formel auch mit Bild und Originalseite nicht sicher lesen, binde das Bild ein (`![Formel S. N](images/<datei>.png)`) und melde sie als nicht rekonstruierbar. `\frac`, `\text` usw. nur innerhalb von `$$`-Blöcken.
 4. **Grafiken:** Binde die Abbildungen ein, die zum Verständnis nötig sind (Kurven, Schemata, Übersichten), mit `![Abb. …](images/<datei>.png)` – genau der Dateiname aus dem Lerntext. Sieh dir die PNG vorher an. Darunter 1–2 Sätze, was die Grafik zeigt und worauf man achten muss. Deko-Bilder und Logos weglassen.
 5. **Tabellen:** Vergleiche und Gegenüberstellungen als Markdown-Tabelle.
-6. **Umfang:** etwa 25–35 % der Zeichenzahl des Lerntexts. Das ist ein **Richtwert, kein Muss**: lieber vollständig erklären als kürzen.
+6. **Umfang:** Ziel 30–45 % der Zeichenzahl des Lerntexts. Das ist ein **Richtwert, kein Muss**: lieber vollständig erklären als kürzen. Erst über 55 % löst die Länge eine Korrekturrunde aus (Regel 10).
 7. **Format** (leere Teile weglassen):
 
    ```
@@ -112,12 +114,13 @@ Erzeuge für Hefte unter `output/` je ein Lernskript aus dem bereinigten Lerntex
    ```
 
    - **Gliederung:** **Jedes** Kapitel, Unterkapitel und Unter-Unterkapitel des Lerntexts bekommt eine eigene Überschrift: `## <N> <Titel>`, `### <N.M> <Titel> (S. a–b)`, `#### <N.M.K> <Titel>` (tiefere Ebenen `##### <N.M.K.L> <Titel>`) – Nummer und Titel **exakt wie im Lerntext**, gleiche Reihenfolge. **Nie umbenennen, zusammenlegen oder weglassen**, auch nicht, wenn der Titel Wörter wie „Aufgaben“ oder „Übungen“ enthält. `a–b` sind die Seiten des Unterkapitels laut `<!-- Seite N -->` im Lerntext (bei einer Seite `(S. a)`). Nur Seiten verwenden, die als `<!-- Seite N -->` im Lerntext stehen.
+   - **Fett nur für Fachbegriffe.** Erlaubte fette Beschriftungen sind ausschließlich: Formel, Dabei ist, Rechenbeispiel aus dem Heft, Beispiel aus dem Heft, Merke, Hinweis, Definition N.M – Begriff. Aufzählungspunkte aus dem Heft wie „a) Nach Funktionen“ als normalen Listenpunkt oder `#####`-Überschrift setzen, nicht fett.
    - **Seitenangaben** immer mit „S.“ vor jeder Seite, z. B. „S. 53, S. 84“.
    - Inhalte ohne nummeriertes Kapitel (Einleitung, Anhang wie Glossar) fließen in den Überblick, in „Wichtige Begriffe“ oder in das passende Kapitel ein.
    - **Definitionen:** Jede nummerierte Definition („Definition 1.2“) des Lerntexts erscheint im Wortlaut, im Format `**Definition N.M – Begriff:**`.
    - **Selbstcheck:** pro Hauptkapitel 3–5 Verständnisfragen zum Inhalt (keine Aufgaben aus dem Heft), je als eine `<details>`-Zeile; die Antwort nur aus dem Heft, mit Seitenangabe.
    - **Wichtige Begriffe:** Glossar-Einträge und fett gedruckte Fachbegriffe, alphabetisch, Seite als „S. N“.
    - **Überschriften** dürfen die Wörter Übung, Aufgabe, Lösung, Literatur oder Quellen nicht enthalten. Einzige Ausnahme: Ein Kapitel (beliebiger Tiefe) heißt im Lerntext selbst so – dann Nummer und Titel genau wie im Lerntext.
-8. **Ausgabe:** `<X> - Zusammenfassung.md` im Ordner des Lerntexts, UTF-8. Keine anderen Dateien anlegen oder ändern (Hilfsskripte nur im Scratchpad).
+8. **Ausgabe:** `<X> - Zusammenfassung.md` im Ordner des Lerntexts, UTF-8. Keine anderen Dateien anlegen oder ändern (Hilfsskripte nur im Scratchpad; Seitenbilder legt `tools/seite_anzeigen.py` selbst in `output/_seiten/` ab).
 9. **Abschlussmeldung:** letzte gelesene Seite, Länge in % des Lerntexts (vor und nach einer Korrekturrunde), Anzahl Formeln, Anzahl eingebundener Grafiken, „nicht rekonstruierbare Formeln: S. …“ oder „keine“, Stellen „nach Originalseite“ (S. …), Widersprüche im Heft (S. …), ausgelassene Stellen (S. …).
-10. **Korrekturrunde:** Behebe **nur** die ✘-Punkte des Prüfskripts. Nicht kürzen, nicht umformulieren, keine Überschriften entfernen. Kürzen nur, wenn die Länge über 45 % liegt.
+10. **Korrekturrunde:** Behebe **nur** die ✘-Punkte des Prüfskripts. Nicht umformulieren, keine Überschriften entfernen. Gekürzt wird nur, wenn die Länge über 55 % liegt (dann meldet das Prüfskript ✘). Beim Kürzen nur Wiederholungen, Füllsätze und doppelte Beispiele entfernen. **Niemals entfernen:** Definitionen, Formeln, Rechenbeispiele, Grafiken, Überschriften, Merke-Sätze. Ziel nach dem Kürzen etwa 45 %, nicht weniger.
